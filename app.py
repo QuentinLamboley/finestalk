@@ -5,8 +5,8 @@ import csv
 import hmac
 import io
 import os
+import sqlite3
 from datetime import date, datetime, time
-from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
@@ -72,17 +72,8 @@ def title(subtitle: str):
     st.markdown('<div class="finehead"><h1>FINESTALK</h1><p>' +
                 subtitle + '</p></div>', unsafe_allow_html=True)
 
-def show_error(fn):
-    try:
-        return fn()
-    except (ValueError, OSError, sqlite3.Error) as exc:
-        st.error(str(exc))
-        return None
-
 # Le stockage est commun à un seul espace privé. Une instance partagée
 # entre plusieurs personnes exige une authentification et une isolation par utilisateur.
-import sqlite3
-
 with st.sidebar:
     st.markdown("## 🛡️ Finestalk")
     st.caption("Espace de travail privé")
@@ -127,7 +118,6 @@ if page == "Dossiers":
             try:
                 ident = store.create_case(title_in, description)
                 st.success("Dossier créé.")
-                st.session_state["case_selector"] = ident
                 st.rerun()
             except ValueError as exc:
                 st.error(str(exc))
@@ -263,8 +253,6 @@ elif page == "Nouvel élément":
                 st.caption("Les pièces sont copiées et leur SHA-256 est conservé. Cette empreinte ne certifie pas l'authenticité préalable à la collecte.")
             except (ValueError, OSError, ZoneInfoNotFoundError) as exc:
                 st.error(str(exc))
-    if transcript if False else False:
-        pass
 
 elif page == "Chronologie":
     events = store.list_evidence(chosen)
