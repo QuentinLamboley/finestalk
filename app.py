@@ -12,6 +12,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import pandas as pd
 import streamlit as st
 
+from profile_review import ProfileLog, normalize_instagram
+
 from finestalk_core import (
     ALLOWED_EXTENSIONS, CATEGORIES, Store, classify, make_pdf, make_zip
 )
@@ -90,13 +92,14 @@ with st.sidebar:
         chosen = None
         st.info("Créez votre premier dossier.")
     page = st.radio("Navigation", [
-        "Tableau de bord", "Dossiers", "Profils observés", "Nouvel élément",
+        "Inspection Instagram", "Tableau de bord", "Dossiers", "Profils observés", "Nouvel élément",
         "Chronologie", "Import CSV", "Rapports & intégrité", "Aide & confidentialité"
     ])
     st.divider()
     st.caption("Les noms affichés et les pseudonymes ne constituent pas une preuve d'identité.")
 
 title({
+    "Inspection Instagram": "Conserver les déclarations publiques visibles sur un profil Instagram",
     "Tableau de bord": "Vue synthétique et indicateurs documentaires",
     "Dossiers": "Organisation des signalements et situations",
     "Profils observés": "Comptes, URLs et déclarations publiques",
@@ -107,7 +110,92 @@ title({
     "Aide & confidentialité": "Mode d'emploi et précautions",
 }[page])
 
-if page == "Dossiers":
+if page == "Inspection Instagram":
+    st.subheader("Fiche d'observation Instagram")
+    st.write("Documentez les informations **visibles sur le compte lui-même**, sans "
+             "déduire l'identité civile de son titulaire. Un nom affiché peut être "
+             "un pseudonyme, une usurpation ou une déclaration trompeuse.")
+    st.info("Ce module ne cherche pas de coordonnées personnelles et ne recoupe "
+            "pas automatiquement des comptes. Il conserve les éléments que vous "
+            "avez effectivement consultés.")
+    if chosen is None:
+        st.warning("Créez d'abord un dossier dans l'onglet « Dossiers ».")
+    else:
+        review = ProfileLog(store)
+        with st.form("instagram_observation", clear_on_submit=True):
+            handle_input = st.text_input(
+                "Pseudonyme ou URL du profil",
+                placeholder="@exemple ou https://www.instagram.com/exemple/")
+            display_name = st.text_input(
+                "Nom exactement affiché sur le profil (facultatif)",
+                placeholder="Ne renseigner que ce que le compte affiche explicitement")
+            col_date, col_time = st.columns(2)
+            with col_date:
+                obs_date = st.date_input("Date de la consultation", value=date.today())
+            with col_time:
+                obs_time = st.time_input("Heure de la consultation", value=datetime.now().time().replace(second=0, microsecond=0))
+            obs_context = st.text_area(
+                "Source et contexte de la consultation",
+                placeholder="Préciser comment et où le nom a été affiché. Ne pas inscrire de coordonnées privées.")
+            captures = st.file_uploader(
+                "Captures ou exports originaux du profil",
+                type=["png", "jpg", "jpeg", "webp", "pdf"],
+                accept_multiple_files=True,
+                help="Les fichiers sont conservés dans le dossier avec leurs empreintes SHA-256.")
+            consent = st.checkbox(
+                "Je confirme avoir relevé ces informations sur un profil accessible "
+                "légitimement, sans supposer l'identité de la personne.")
+            if st.form_submit_button("Archiver l'observation", type="primary"):
+                if not consent:
+                    st.error("Confirmez l'origine de l'observation.")
+                else:
+                    try:
+                        files = [(f.name, f.getvalue(), f.type or "application/octet-stream")
+                                 for f in captures]
+                        observed = datetime.combine(
+                            obs_date, obs_time,
+                            tzinfo=ZoneInfo("Europe/Paris")).isoformat(timespec="minutes")
+                        obs_id = review.add(
+                            chosen, handle_input, display_name, observed, obs_context, files)
+                        st.success("Observation enregistrée et référencée : " + obs_id)
+                        st.rerun()
+                    except (ValueError, OSError) as exc:
+                        st.error(str(exc))
+        st.divider()
+        st.subheader("Historique documentaire des profils")
+        observations = review.list(chosen)
+        if observations:
+            handles = sorted({o["handle"] for o in observations}, key=str.casefold)
+            focused = st.selectbox("Profil documenté", handles)
+            try:
+                handle, canonical = normalize_instagram(focused)
+                st.markdown(f"[Ouvrir le profil public sur Instagram]({canonical})")
+                history = review.timeline(chosen, handle)
+                declared = review.names_observed(chosen, handle)
+                a, b, c = st.columns(3)
+                a.metric("Observations", len(history))
+                b.metric("Noms affichés relevés", len(declared))
+                c.metric("Captures associées", sum(
+                    len(store.list_attachments(o["evidence_id"])) for o in history))
+                if len(declared) > 1:
+                    st.warning("Plusieurs noms ont été relevés : cela peut correspondre à "
+                               "un changement du profil ou à des erreurs de transcription. "
+                               "Cela ne permet pas de conclure à une identité.")
+                for o in history:
+                    with st.expander(f"{o['observed_at']} · {o['display_name'] or 'Nom non relevé'}"):
+                        st.write("Pseudonyme :", o["handle"])
+                        st.write("Nom affiché (non authentifié) :", o["display_name"] or "Non relevé")
+                        st.write("Contexte :", o["context"] or "Aucun")
+                        st.caption("Pièce de dossier : " + o["evidence_id"])
+                        st.caption("Conservation des captures et vérification SHA-256 dans "
+                                   "« Chronologie » et « Rapports & intégrité ».")
+            except ValueError as exc:
+                st.error(str(exc))
+        else:
+            st.caption("Aucune observation enregistrée. Vous pouvez commencer par un "
+                       "pseudonyme et une capture du profil public.")
+
+elif page == "Dossiers":
     st.subheader("Créer un dossier")
     with st.form("create_case", clear_on_submit=True):
         title_in = st.text_input("Titre de la situation", placeholder="Ex. messages répétés sur Instagram")

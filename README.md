@@ -4,6 +4,14 @@
 
 L'application ne cherche pas à désanonymiser des personnes et ne propose **ni liste de suspects ni probabilités d'identification**. Le nom affiché par un compte est traité comme une déclaration non vérifiée. Le score sur 100 indique uniquement la **complétude documentaire** du dossier, et non la fiabilité d'une identité, la gravité ou une culpabilité.
 
+## Étape 1 — Fiche de profil Instagram
+
+L'écran **Inspection Instagram** constitue un journal chronologique d'informations **explicitement affichées** sur un profil : pseudonyme, URL canonique, nom affiché, date de consultation et captures fournies par l'utilisateur. Chaque observation crée une pièce associée au dossier, conservée avec son empreinte SHA-256 et son journal d'audit. L'historique permet de repérer les changements de nom affiché au fil des observations. Les captures peuvent figurer dans le ZIP/PDF du dossier.
+
+Ce module fonctionne **sans connexion Instagram, sans scrapping ni requête automatique vers le compte** : il prend les observations et pièces apportées par l'utilisateur. Il ne calcule aucune identité supposée, ne recoupe pas les pseudonymes avec des personnes et ne recherche pas de coordonnées privées. Le nom affiché par un profil ne permet pas à lui seul de connaître l'identité civile du titulaire.
+
+Pour utiliser cette étape : créez un dossier, ouvrez **Inspection Instagram**, saisissez le pseudonyme ou l'URL du profil, indiquez le nom *exactement tel qu'affiché* s'il existe, puis joignez une capture non retouchée. Les différentes versions sont conservées dans l'historique.
+
 ## Fonctionnalités
 
 - Tableau de bord des faits, des profils observés et de la complétude.
