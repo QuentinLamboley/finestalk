@@ -1,0 +1,17 @@
+# Donnees personnelles, preuves et secrets : jamais versionner.
+.finestalk_data/
+.streamlit/secrets.toml
+.env
+.env.*
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+dist/
+build/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
+*.zip
+.DS_Store
