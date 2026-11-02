@@ -39,7 +39,7 @@ $env:FINESTALK_ACCESS_PASSWORD = "remplacez-par-une-phrase-secrete-longue-et-uni
 streamlit run app.py
 ```
 
-Le serveur se lie par défaut à `127.0.0.1`. Ouvrir l'URL locale fournie par Streamlit.
+En local, ouvrez l'URL donnée par Streamlit. Ne rendez pas une instance sans authentification individuelle et isolation des dossiers accessible à plusieurs utilisateurs.
 
 ### Installation Linux/macOS
 
@@ -61,6 +61,27 @@ streamlit run app.py
 Le mot de passe n'est pas un chiffrement des fichiers. Protégez le disque par le chiffrement de votre système et faites des sauvegardes chiffrées. Le répertoire de preuves est ignoré par Git.
 
 **Déploiement :** l'architecture est **mono-espace privé**, pas multiutilisateur. Ne publiez pas cette instance sur Streamlit Community Cloud ou un domaine public en pensant que le mot de passe partagé fournit une séparation entre usagers. Pour un service public, prévoir avant déploiement une authentification individuelle, une isolation des données par utilisateur, un stockage durable chiffré, une politique de rétention et une revue de sécurité. Sur un hébergement éphémère, les dossiers peuvent disparaître au redémarrage.
+
+
+### Streamlit Community Cloud
+
+Le dépôt peut être relié à [https://finestalk.streamlit.app/](https://finestalk.streamlit.app/) via le tableau de bord Streamlit. Le fichier de démarrage est `app.py` sur la branche `main`. Les changements poussés sur cette branche sont normalement pris en compte par Community Cloud lorsque l'application pointe vers ce dépôt.
+
+**Configurez le mot de passe directement dans Settings → Secrets** de l'application hébergée, et non dans GitHub. Format TOML :
+
+```toml
+FINESTALK_ACCESS_PASSWORD = "remplacez-par-un-secret-unique-et-robuste"
+```
+
+Le code lit déjà cette valeur via `st.secrets` ou `os.environ`. Ne publiez pas la valeur dans le dépôt, les logs ou des captures. Le fichier `.streamlit/secrets.toml` est exclu de Git. Un mot de passe partagé ne garantit pas la séparation des usagers.
+
+**ATTENTION :** sur Community Cloud, les fichiers locaux sont potentiellement éphémères. La base SQLite et les captures ne constituent pas une sauvegarde durable. Exportez régulièrement vos dossiers et utilisez un stockage pérenne chiffré avant tout service réel. L'application n'est pas conçue pour des dossiers de plusieurs victimes sur une même instance.
+
+### Instantanés de profil
+
+L'écran **Inspection Instagram** conserve les seules caractéristiques déclarées par le compte et relevées par l'utilisateur : nom affiché, biographie, catégorie, visibilité, type de compte, badge, lien HTTPS déclaré, accessibilité de la messagerie et compteurs publiquement visibles. Les observations ont leur date, leur provenance et leurs captures. La chronologie signale des changements **entre observations d'un même compte** ; elle n'affirme ni identité civile, ni lien entre plusieurs personnes ou plateformes.
+
+Le module n'accède pas à Instagram automatiquement. Il ne récolte pas d'adresses personnelles, de numéros de téléphone, d'e-mails privés ni d'informations de localisation. Un lien externe déclaré par le compte est conservé mais n'est pas exploré.
 
 ## Format d'import CSV
 

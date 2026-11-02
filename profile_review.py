@@ -74,8 +74,8 @@ class ProfileLog:
             raise ValueError("Nom affiché trop long.")
         if len(context) > 5000:
             raise ValueError("Contexte trop long.")
-        if not name and not files:
-            raise ValueError("Fournissez un nom affiché ou une capture du profil.")
+        if not name and not files and not context.strip():
+            raise ValueError("Fournissez un nom affiché, une observation publique ou une capture du profil.")
         try:
             dt = datetime.fromisoformat(observed_at)
         except (ValueError, TypeError):
