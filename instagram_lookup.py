@@ -229,7 +229,7 @@ def lookup_public_profile(value: str, *, transport=None) -> PublicProfileResult:
                     html = buffer.decode("utf-8", errors="replace")
                 displayed, title, description = extract_metadata(html, username)
 
-                if re.search(r"\\b(log ?in|sign ?up|connexion|se connecter)\\b", title, re.I):
+                if re.search(r"\b(log ?in|sign ?up|connexion|se connecter)\b", title, re.I):
                     return _result(username, canonical_url, timestamp, "connexion_requise",
                                    "Instagram affiche un écran de connexion.", code)
                 if displayed:
