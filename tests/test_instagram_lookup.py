@@ -65,7 +65,7 @@ def test_matching_name_is_only_displayed_name():
 
 
 @pytest.mark.parametrize("status,expected", [
-    (301, "redirection"), (302, "redirection"),
+    (301, "redirection_bloquee"), (302, "redirection_bloquee"),
     (401, "acces_limite"), (403, "acces_limite"),
     (429, "acces_limite"), (404, "indisponible"),
     (500, "erreur"),
@@ -122,3 +122,123 @@ def test_network_error_is_caught():
 def test_untrusted_targets_rejected(value):
     with pytest.raises(ValueError):
         normalize_instagram(value)
+
+
+def fake_hops(hops):
+    """Inspecte toutes les requêtes, sans ouverture de site réel."""
+    expected = list(hops)
+    def request(url, **kwargs):
+        assert kwargs["allow_redirects"] is False
+        assert kwargs["stream"] is True
+        assert expected, "Une requête surnuméraire a été effectuée"
+        expected_url, result = expected.pop(0)
+        assert url == expected_url
+        return result
+    return request, expected
+
+
+def test_safe_www_to_bare_domain():
+    first = FakeResponse(301)
+    first.headers["Location"] = "https://instagram.com/compte.test/"
+    second = FakeResponse(200, html=(
+        '<meta property="og:title" content="Nom déclaré (@compte.test) • Instagram">'
+    ))
+    fetch, remaining = fake_hops([
+        ("https://www.instagram.com/compte.test/", first),
+        ("https://instagram.com/compte.test/", second),
+    ])
+    result = lookup_public_profile("compte.test", transport=fetch)
+    assert result.status == "metadonnees_publiques"
+    assert result.display_name == "Nom déclaré"
+    assert not remaining
+
+
+def test_safe_relative_same_profile_redirect():
+    first = FakeResponse(302)
+    first.headers["Location"] = "/compte.test/?hl=fr"
+    second = FakeResponse(200, html=(
+        '<meta property="og:title" content="Nom déclaré (@compte.test) • Instagram">'
+    ))
+    fetch, remaining = fake_hops([
+        ("https://www.instagram.com/compte.test/", first),
+        ("https://www.instagram.com/compte.test/?hl=fr", second),
+    ])
+    result = lookup_public_profile("compte.test", transport=fetch)
+    assert result.display_name == "Nom déclaré"
+    assert not remaining
+
+
+@pytest.mark.parametrize("redirect", [
+    "https://evil.example/compte.test/",
+    "http://www.instagram.com/compte.test/",
+    "https://www.instagram.com.evil.example/compte.test/",
+    "https://attacker:pass@www.instagram.com/compte.test/",
+    "https://www.instagram.com:444/compte.test/",
+    "//localhost/internal",
+    "file:///etc/passwd",
+    "/another-account/",
+    "/accounts/profile/",
+])
+def test_never_follow_unsafe_redirects(redirect):
+    response = FakeResponse(302)
+    response.headers["Location"] = redirect
+    fetch, remaining = fake_hops([
+        ("https://www.instagram.com/compte.test/", response)
+    ])
+    result = lookup_public_profile("compte.test", transport=fetch)
+    assert result.status in ("redirection_bloquee", "redirection_autre_page")
+    assert result.display_name == ""
+    assert not remaining
+
+
+@pytest.mark.parametrize("login_location", [
+    "/accounts/login/?next=%2Fcompte.test%2F",
+    "https://www.instagram.com/accounts/login/",
+    "/accounts/signup/",
+    "/challenge/",
+])
+def test_login_redirect_is_reported_without_following(login_location):
+    response = FakeResponse(302)
+    response.headers["Location"] = login_location
+    fetch, remaining = fake_hops([
+        ("https://www.instagram.com/compte.test/", response)
+    ])
+    result = lookup_public_profile("compte.test", transport=fetch)
+    assert result.status == "connexion_requise"
+    assert "connexion" in result.message
+    assert not remaining
+
+
+def test_redirect_loop_is_detected():
+    first = FakeResponse(301)
+    first.headers["Location"] = "/compte.test/?hl=fr"
+    second = FakeResponse(301)
+    second.headers["Location"] = "/compte.test/"
+    fetch, remaining = fake_hops([
+        ("https://www.instagram.com/compte.test/", first),
+        ("https://www.instagram.com/compte.test/?hl=fr", second),
+    ])
+    result = lookup_public_profile("compte.test", transport=fetch)
+    assert result.status == "boucle_redirection"
+    assert not remaining
+
+
+def test_three_redirect_limit():
+    urls = [
+        "https://www.instagram.com/compte.test/",
+        "https://www.instagram.com/compte.test/?hl=fr",
+        "https://www.instagram.com/compte.test/?hl=en",
+        "https://www.instagram.com/compte.test/?hl=es",
+    ]
+    hops = []
+    for index, url in enumerate(urls):
+        fake = FakeResponse(302)
+        fake.headers["Location"] = (
+            urls[index + 1] if index + 1 < len(urls)
+            else "https://www.instagram.com/compte.test/?hl=de"
+        )
+        hops.append((url, fake))
+    fetch, remaining = fake_hops(hops)
+    result = lookup_public_profile("compte.test", transport=fetch)
+    assert result.status == "trop_de_redirections"
+    assert not remaining

@@ -1,8 +1,8 @@
 """Consultation minimale de métadonnées publiquement retournées par Instagram.
 
-Une seule requête HTTPS, vers un hôte fixé par le programme, sans connexion,
-redirection, navigation automatisée, recherche de personnes ni corrélation
-entre pseudonymes. Ne conclut jamais à une identité civile.
+Une consultation HTTPS limitée aux hôtes Instagram autorisés et au chemin
+exact du profil, sans connexion, navigation automatisée, recherche de personnes
+ni corrélation entre pseudonymes. Ne conclut jamais à une identité civile.
 """
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from html.parser import HTMLParser
 import re
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
@@ -19,6 +20,9 @@ from profile_review import normalize_instagram
 MAX_HTML_BYTES = 512 * 1024
 TITLE_MAX_CHARS = 240
 DESCRIPTION_MAX_CHARS = 700
+MAX_SAFE_REDIRECTS = 3
+REDIRECT_CODES = (301, 302, 303, 307, 308)
+SAFE_HOSTS = frozenset({"www.instagram.com", "instagram.com", "m.instagram.com"})
 
 
 def _clean(value: str, limit: int) -> str:
@@ -115,69 +119,130 @@ def _result(username: str, url: str, timestamp: str, status: str,
     )
 
 
-def lookup_public_profile(value: str, *, transport=None) -> PublicProfileResult:
-    """Lecture opportuniste du document public ; échec explicite si bloqué.
+def _safe_redirect(current_url: str, location: str, username: str) -> tuple[str, str]:
+    """Vérifie une redirection sans jamais visiter une destination arbitraire.
 
-    `transport` sert à injecter une fausse réponse dans les tests.
+    On accepte uniquement le même profil exact sur un domaine Instagram
+    prédéfini en HTTPS. Les routes de connexion sont reconnues, non visitées.
     """
-    username, url = normalize_instagram(value)
+    if not location or len(location) > 4096:
+        return "", "redirection_bloquee"
+    target = urljoin(current_url, location)
+    try:
+        parsed = urlsplit(target)
+        port = parsed.port
+    except ValueError:
+        return "", "redirection_bloquee"
+    if (parsed.scheme != "https" or parsed.hostname not in SAFE_HOSTS
+            or parsed.username or parsed.password or port not in (None, 443)):
+        return "", "redirection_bloquee"
+    path = parsed.path.casefold().rstrip("/")
+    if path in {"/accounts/login", "/accounts/signup", "/challenge",
+                "/accounts/onetap"} or any(
+                path.startswith(prefix + "/") for prefix in
+                ("/accounts/login", "/accounts/signup", "/challenge",
+                 "/accounts/onetap")):
+        return "", "connexion_requise"
+    if path != "/" + username.casefold():
+        return "", "redirection_autre_page"
+    return target, "profil"
+
+
+def lookup_public_profile(value: str, *, transport=None) -> PublicProfileResult:
+    """Lit la page publique ; suit au maximum trois redirections vérifiées.
+
+    Si Instagram exige une connexion, la consultation s'arrête : aucune
+    authentification automatisée, aucun contournement, aucune donnée supposée.
+    Le paramètre transport sert exclusivement aux tests hors réseau.
+    """
+    username, canonical_url = normalize_instagram(value)
     timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     get = transport if transport is not None else requests.get
+    current_url = canonical_url
+    visited = set()
+    redirects = 0
     try:
-        response = get(
-            url,
-            headers={
-                "Accept": "text/html",
-                "User-Agent": "Mozilla/5.0 (compatible; FinestalkProfilePreview/1.0)",
-            },
-            stream=True,
-            allow_redirects=False,
-            timeout=(4, 10),
-        )
-        with response:
-            code = response.status_code
-            if code in (301, 302, 303, 307, 308):
-                return _result(username, url, timestamp, "redirection",
-                               "La plateforme a redirigé la consultation ; aucune redirection n'a été suivie.", code)
-            if code in (401, 403, 429):
-                return _result(username, url, timestamp, "acces_limite",
-                               "Instagram limite ou bloque les consultations automatisées non connectées.", code)
-            if code == 404:
-                return _result(username, url, timestamp, "indisponible",
-                               "Ce profil n'est pas accessible à cette adresse.", code)
-            if code != 200:
-                return _result(username, url, timestamp, "erreur",
-                               "Instagram n'a pas renvoyé de page consultable.", code)
-            if "text/html" not in response.headers.get("Content-Type", "").lower():
-                return _result(username, url, timestamp, "format_inattendu",
-                               "La réponse reçue n'est pas une page HTML.", code)
+        while True:
+            if current_url in visited:
+                return _result(username, canonical_url, timestamp, "boucle_redirection",
+                               "Instagram renvoie en boucle vers la même adresse.")
+            visited.add(current_url)
+            response = get(
+                current_url,
+                headers={
+                    "Accept": "text/html",
+                    "User-Agent": "Mozilla/5.0 (compatible; FinestalkProfilePreview/1.0)",
+                },
+                stream=True,
+                allow_redirects=False,
+                timeout=(4, 10),
+            )
+            with response:
+                code = response.status_code
+                if code in REDIRECT_CODES:
+                    new_url, kind = _safe_redirect(
+                        current_url, response.headers.get("Location", ""), username
+                    )
+                    if kind == "connexion_requise":
+                        return _result(username, canonical_url, timestamp, kind,
+                            "Instagram demande une connexion pour consulter ce profil depuis le serveur. "
+                            "Finestalk ne contourne pas cette restriction.", code)
+                    if kind == "redirection_autre_page":
+                        return _result(username, canonical_url, timestamp, kind,
+                            "Instagram redirige vers une autre page que ce profil. "
+                            "Aucune information sur le compte ne peut être confirmée.", code)
+                    if kind != "profil":
+                        return _result(username, canonical_url, timestamp, "redirection_bloquee",
+                            "Instagram a proposé une redirection extérieure au profil autorisé ; "
+                            "elle a été bloquée par sécurité.", code)
+                    if redirects >= MAX_SAFE_REDIRECTS:
+                        return _result(username, canonical_url, timestamp,
+                            "trop_de_redirections",
+                            "Trop de redirections successives pour ouvrir le profil.", code)
+                    current_url = new_url
+                    redirects += 1
+                    continue
 
-            buffer = bytearray()
-            for chunk in response.iter_content(chunk_size=16384):
-                if len(buffer) + len(chunk) > MAX_HTML_BYTES:
-                    return _result(username, url, timestamp, "page_trop_grande",
-                                   "La page dépasse la limite de lecture prudente.", code)
-                buffer.extend(chunk)
-            encoding = response.encoding or "utf-8"
-            try:
-                html = buffer.decode(encoding, errors="replace")
-            except LookupError:
-                html = buffer.decode("utf-8", errors="replace")
-            displayed, title, description = extract_metadata(html, username)
+                if code in (401, 403, 429):
+                    return _result(username, canonical_url, timestamp, "acces_limite",
+                                   "Instagram limite l'accès non connecté depuis ce serveur.", code)
+                if code == 404:
+                    return _result(username, canonical_url, timestamp, "indisponible",
+                                   "Ce profil n'est pas accessible à cette adresse.", code)
+                if code != 200:
+                    return _result(username, canonical_url, timestamp, "erreur",
+                                   "Instagram n'a pas renvoyé de page consultable.", code)
+                if "text/html" not in response.headers.get("Content-Type", "").lower():
+                    return _result(username, canonical_url, timestamp, "format_inattendu",
+                                   "La réponse reçue n'est pas une page HTML.", code)
 
-            if displayed:
-                return _result(username, url, timestamp, "metadonnees_publiques",
-                               "Informations publiques affichées par le compte, sans vérification d'identité.",
-                               code, displayed, title, description)
-            if re.search(r"\b(log ?in|sign ?up|connexion|se connecter)\b", title, re.I):
-                return _result(username, url, timestamp, "connexion_requise",
-                               "Instagram affiche un écran de connexion.", code)
-            if username.casefold() in title.casefold() or username.casefold() in description.casefold():
-                return _result(username, url, timestamp, "metadonnees_partielles",
-                               "Un titre ou une description publique a été retrouvé sans nom explicite.",
-                               code, "", title, description)
-            return _result(username, url, timestamp, "aucune_donnee",
-                           "Aucune métadonnée fiable associée à ce compte n'a pu être lue.", code)
+                buffer = bytearray()
+                for chunk in response.iter_content(chunk_size=16384):
+                    if len(buffer) + len(chunk) > MAX_HTML_BYTES:
+                        return _result(username, canonical_url, timestamp, "page_trop_grande",
+                                       "La page dépasse la limite de lecture prudente.", code)
+                    buffer.extend(chunk)
+                encoding = response.encoding or "utf-8"
+                try:
+                    html = buffer.decode(encoding, errors="replace")
+                except LookupError:
+                    html = buffer.decode("utf-8", errors="replace")
+                displayed, title, description = extract_metadata(html, username)
+
+                if re.search(r"\b(log ?in|sign ?up|connexion|se connecter)\b", title, re.I):
+                    return _result(username, canonical_url, timestamp, "connexion_requise",
+                                   "Instagram affiche un écran de connexion.", code)
+                if displayed:
+                    return _result(username, canonical_url, timestamp, "metadonnees_publiques",
+                                   "Informations publiquement affichées, sans vérification d'identité.",
+                                   code, displayed, title, description)
+                if username.casefold() in title.casefold() or username.casefold() in description.casefold():
+                    return _result(username, canonical_url, timestamp, "metadonnees_partielles",
+                                   "Titre ou description publique retrouvés sans nom explicite.",
+                                   code, "", title, description)
+                return _result(username, canonical_url, timestamp, "aucune_donnee",
+                               "Aucune métadonnée fiable associée à ce compte n'a pu être lue.", code)
     except requests.RequestException:
-        return _result(username, url, timestamp, "erreur_reseau",
-                       "Instagram ne répond pas ou refuse cette consultation. Essayez directement sur son site.")
+        return _result(username, canonical_url, timestamp, "erreur_reseau",
+                       "Instagram ne répond pas ou refuse cette consultation. "
+                       "Ouvrez le profil directement sur son site.")
