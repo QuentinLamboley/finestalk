@@ -14,5 +14,8 @@ jobs:
           python-version: "3.12"
       - run: python -m pip install --upgrade pip
       - run: python -m pip install -r requirements.txt pytest
-      - run: python -m compileall -q app.py instagram_lookup.py finestalk_core.py profile_review.py account_characteristics.py account_characteristics_store.py account_characteristics_ui.py
+      - run: python -m compileall -q app.py public_presence.py instagram_lookup.py finestalk_core.py profile_review.py account_characteristics.py account_characteristics_store.py account_characteristics_ui.py
       - run: python -m pytest -q
+      - name: Vérification réseau en direct (diagnostic non bloquant)
+        continue-on-error: true
+        run: python scripts/smoke_public_presence.py
