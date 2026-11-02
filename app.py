@@ -139,7 +139,7 @@ query = st.text_input(
 st.markdown("""
 <div class="ft-caption">
 Appuyez sur Entrée pour lancer la consultation publique.
-Aucune connexion Instagram requise.
+Les résultats dépendent de l’accès autorisé par Instagram.
 </div>
 """, unsafe_allow_html=True)
 
@@ -157,13 +157,15 @@ now = time.monotonic()
 cached = st.session_state.get("_profile_result")
 cached_at = st.session_state.get("_profile_result_at", 0)
 if (cached is not None and cached.username.casefold() == username.casefold()
-        and now - cached_at < 120):
+        and now - cached_at < (120 if cached.status in ("metadonnees_publiques", "metadonnees_partielles") else 10)
+        and st.session_state.get("_lookup_version") == 2):
     result = cached
 else:
     with st.spinner("Consultation du profil public…"):
         result = lookup_public_profile(username)
     st.session_state["_profile_result"] = result
     st.session_state["_profile_result_at"] = now
+    st.session_state["_lookup_version"] = 2
 
 st.divider()
 with st.container(border=True):
