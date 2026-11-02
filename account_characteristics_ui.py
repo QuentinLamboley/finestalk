@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from account_characteristics import (
-    CATEGORIES, FIELD_LABELS, format_public_snapshot, normalize_snapshot,
+    CATEGORIES, FIELD_LABELS, format_public_snapshot, has_public_observation, normalize_snapshot,
 )
 from account_characteristics_store import CharacteristicsStore
 from profile_review import ProfileLog, normalize_instagram
@@ -120,6 +120,8 @@ def render_instagram_page(store, case_id: str | None) -> None:
                     username, canonical = normalize_instagram(raw_handle)
                     files = [(f.name, f.getvalue(), f.type or "application/octet-stream")
                              for f in captures]
+                    if not display_name.strip() and not files and not has_public_observation(snapshot):
+                        raise ValueError("Relevez au moins une caractéristique publique ou joignez une capture.")
                     moment = datetime.combine(
                         observed_date, observed_time,
                         tzinfo=ZoneInfo("Europe/Paris")).isoformat(timespec="minutes")
