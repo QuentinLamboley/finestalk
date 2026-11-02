@@ -1,33 +1,40 @@
 # Finestalk
 
-**Finestalk** explore la présence publique d'un **pseudonyme Instagram** sur plusieurs plateformes, en restant une interface Streamlit simple : une seule barre de recherche et une fiche de résultats. Ce n'est pas un outil de désanonymisation de personnes.
+Application Streamlit de **recherche de présences publiques vérifiables**, avec une seule barre de recherche et une présentation sombre, minimaliste.
 
-- Application cible : https://finestalk.streamlit.app/
+- Site : https://finestalk.streamlit.app/
 - Dépôt : https://github.com/QuentinLamboley/finestalk
-- Branche : `main`
-- Fichier d'entrée : `app.py`
+- Déploiement : branche `main`, fichier `app.py`
 
-## Comment fonctionne une recherche ?
+## Barre de recherche intelligente
 
-Tapez un pseudonyme, par exemple `@octocat`, puis validez. L'application vérifie en parallèle, au plus trois requêtes à la fois, la présence **exacte du même pseudonyme** dans les interfaces publiques de :
+Le même champ reconnaît automatiquement :
 
-1. **GitHub** — `GET /users/{username}`
-2. **GitLab** — `GET /api/v4/users?username=...`
-3. **DEV Community** — `GET /api/users/by_username?url=...`
-4. **Chess.com** — `GET /pub/player/{username}`
-5. **Hacker News** — `GET /v0/user/{id}.json`
+| Exemple | Mode | Traitement |
+|---|---|---|
+| `@octocat` | Pseudonyme | Recherche de comptes portant exactement ce pseudo via des API publiques |
+| `https://instagram.com/octocat/` | Profil Instagram | Extraction du pseudonyme, puis mêmes vérifications publiques |
+| `Marie Dupont` | Nom complet | Liens vers des recherches web exactes, à consulter et apprécier manuellement |
+| `marie@example.org` | E-mail | Reconnaissance **locale du format uniquement** |
+| `06 12 34 56 78` | Téléphone | Reconnaissance **locale du format uniquement** |
 
-Elle distingue explicitement :
+Les saisies e-mail et téléphone ne sont pas envoyées à des services externes, associées à des identités, conservées ou affichées dans des résultats publics. Aucun numéro n'est recherché dans des annuaires inversés ; aucun compte n'est découvert à partir d'une adresse privée.
 
-- **Compte public trouvé** : une API a retourné une fiche portant ce pseudonyme exact.
-- **Aucune fiche publique trouvée** : l'API a retourné un résultat vide ou un code 404. Cela n'établit pas que le pseudo est disponible.
-- **Vérification indisponible** : réseau, limitation, authentification, réponse inattendue ou format de pseudo incompatible. Aucun résultat absent/positif n'est déduit dans ce cas.
+La recherche par nom mène à des résultats publics des moteurs de recherche, sans attribution automatique : de nombreuses personnes peuvent porter le même nom.
 
-Une recherche exacte peut aussi être ouverte manuellement sur Google, Bing et DuckDuckGo. **Finestalk ne collecte pas les résultats de ces moteurs.**
+## Mode pseudonyme : les sources interrogées
 
-**Important :** deux comptes portant le même pseudonyme peuvent appartenir à deux personnes différentes. Une correspondance de nom d'utilisateur est une observation sur des comptes, pas une preuve d'identité. Aucun nom civil, contact privé, adresse, localisation ou pourcentage de probabilité d'identité n'est récupéré ni inféré.
+- **GitHub** : `GET /users/{username}`
+- **GitLab** : `GET /api/v4/users?username=...`
+- **DEV Community** : `GET /api/users/by_username?url=...`
+- **Chess.com** : `GET /pub/player/{username}`
+- **Hacker News** : `GET /v0/user/{id}.json`
 
-Le module Instagram initial reste dans le dépôt mais n'est plus interrogé par l'interface : l'hébergement Streamlit recevait des redirections de connexion plutôt que les métadonnées du profil.
+L'application présente uniquement le statut d'existence d'une **fiche publique portant exactement le pseudonyme** et ses liens sources. Trois catégories documentaires restent séparées : compte confirmé, absence de fiche publique sur la source, et vérification indisponible (limitation, réseau, format).
+
+Une URL Instagram ainsi que des liens de recherches exactes Google, Bing et DuckDuckGo complètent l'examen, mais ces pages ne sont pas automatiquement analysées. Une même chaîne de caractères sur deux services ne prouve **jamais** qu'il s'agit du même titulaire.
+
+Il n'est pas scientifiquement fondé de calculer une probabilité d'identité civile à partir de simples occurrences de pseudonymes. Les indicateurs mesurent donc des confirmations **de comptes**, pas des personnes.
 
 ## Installation
 
@@ -39,32 +46,32 @@ cd finestalk
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install -r requirements.txt
-$env:FINESTALK_ACCESS_PASSWORD = "une-longue-phrase-secrete-unique"
+$env:FINESTALK_ACCESS_PASSWORD = "une-phrase-secrete-unique-et-longue"
 streamlit run app.py
 ```
 
-Sur Streamlit Community Cloud, configurez `FINESTALK_ACCESS_PASSWORD` dans les secrets privés de l'application (Settings → Secrets). **Ne l'inscrivez pas dans GitHub.** Le code lit ce secret, sans changer le design de la page de connexion.
-
-## Limites et sécurités
-
-- Les seules destinations contactées sont cinq **API publiques prédéfinies**, construites à partir d'un pseudonyme validé. Pas d'URL arbitraire, de connexion aux comptes, d'exploration en profondeur, ni de contournement de restriction.
-- Une requête par plateforme, redirections HTTP désactivées, connexion limitée à 3,5 s, lecture à 7 s, corps JSON plafonné à 160 Ko.
-- Au maximum trois consultations simultanées. Une recherche déjà effectuée est gardée pendant trois minutes dans la session Streamlit (pas de base de données de recherche ni de fichier exporté).
-- Aucun nom, biographie, coordonnées ni données de profils tiers ne sont récupérés dans les réponses JSON : seuls le statut de présence du pseudonyme et les liens officiels vers les pages sont affichés.
-- L'accès distant aux API peut être limité depuis certains hébergeurs. Le panneau de résultats indique alors **Indisponible**, sans inventer d'identité ni déclarer le profil absent.
-
-Les anciens modules de gestion de dossiers restent dans le code pour une étape ultérieure, sans être chargés par `app.py`. L'instance Streamlit actuelle utilise un secret partagé et **n'est pas destinée à accueillir plusieurs utilisateurs indépendants**.
+Pour Streamlit Community Cloud : application reliée à `main`, script `app.py`, variable `FINESTALK_ACCESS_PASSWORD` dans **Settings → Secrets**, jamais dans GitHub. Le mot de passe commun est réservé à un usage privé ou de démonstration.
 
 ## Vérifications
 
 ```bash
 python -m pip install -r requirements.txt pytest
 python -m pytest -q
-python -m compileall -q app.py public_presence.py
+python -m compileall -q app.py query_types.py public_presence.py
 python scripts/smoke_public_presence.py
 ```
 
-Les tests automatisés hors réseau couvrent les réponses confirmées, absentes, invalides, bloquées, les formats propres aux plateformes et les échecs de connexion. Le script de vérification réseau tente deux comptes publics connus, imprime les statuts réellement obtenus et échoue si aucune réponse positive n'est reçue. Ce contrôle est **non bloquant** en CI afin qu'une panne ou une limitation d'une API externe n'empêche pas la livraison d'un correctif testé localement.
+Le scénario réseau vérifie deux comptes publics connus sur GitHub et Chess.com, et teste le vrai code. Les autres vérifications automatisées utilisent des réponses simulées (pour la robustesse et la reproductibilité). L'hébergement Streamlit Cloud peut rencontrer des restrictions différentes.
+
+## Architecture évolutive
+
+- `app.py` : interface, champ de recherche, états et protection d'accès.
+- `query_types.py` : reconnaissance locale des types de saisie, indépendamment du réseau.
+- `public_presence.py` : vérifications publiques strictes et URLs de sources.
+- `instagram_lookup.py` : ancien moteur de profil, conservé mais inactif.
+- `finestalk_core.py`, `profile_review.py` et `account_characteristics*.py` : anciens modules de dossiers, non utilisés dans cette interface.
+
+Les requêtes API sont limitées en durée et en taille, les redirections désactivées, et l'application n'enregistre pas les recherches dans un fichier ou une base. L'hébergement et la disponibilité des API demeurent des limites externes.
 
 ## Licence
 
