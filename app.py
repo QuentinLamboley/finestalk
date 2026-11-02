@@ -7,7 +7,8 @@ import time
 
 import streamlit as st
 
-from public_presence import check_public_presence, search_links
+from public_presence import check_public_presence
+from query_types import interpret, public_search_links
 from profile_review import normalize_instagram
 
 
@@ -105,8 +106,8 @@ def hero() -> None:
       <div class="ft-kicker">Analyse de profils publics</div>
       <div class="ft-name">Finestalk</div>
       <div class="ft-sub">
-        Un pseudonyme. Des présences publiques vérifiées sur plusieurs
-        plateformes, avec des liens vers leurs sources.
+        Une recherche unique pour explorer les informations publiques.
+        Chaque résultat est accompagné de sa source.
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -131,15 +132,14 @@ if not st.session_state.get("finestalk_authenticated", False):
     st.stop()
 
 query = st.text_input(
-    "Rechercher un compte Instagram",
-    placeholder="@pseudonyme ou https://instagram.com/pseudonyme",
+    "Rechercher",
+    placeholder="@pseudonyme, prénom nom, e-mail ou téléphone",
     label_visibility="collapsed",
     key="profile_query",
 )
 st.markdown("""
 <div class="ft-caption">
-Appuyez sur Entrée pour vérifier la présence publique de ce pseudonyme.
-Un pseudo identique ne signifie pas une même personne.
+Saisie reconnue automatiquement. Les comptes homonymes ne constituent pas une preuve d’identité.
 </div>
 """, unsafe_allow_html=True)
 
@@ -147,10 +147,40 @@ if not query.strip():
     st.stop()
 
 try:
-    username, canonical = normalize_instagram(query)
+    parsed_query = interpret(query)
 except ValueError as error:
     st.error(str(error))
     st.stop()
+
+if parsed_query.kind != "username":
+    st.divider()
+    if parsed_query.kind == "name":
+        st.subheader("Rechercher des sources publiques")
+        st.info(
+            "Ce nom peut correspondre à plusieurs personnes. Consultez les "
+            "résultats de recherche sans attribuer automatiquement les pages "
+            "à une identité précise."
+        )
+        links = public_search_links(parsed_query)
+        columns = st.columns(3)
+        for column, (engine, url) in zip(columns, links.items()):
+            with column:
+                st.link_button(engine, url, use_container_width=True)
+    elif parsed_query.kind == "email":
+        st.subheader("Adresse e-mail reconnue")
+        st.info(
+            "Format reconnu localement. Aucune requête externe ni recherche "
+            "inversée de titulaire n'est effectuée."
+        )
+    else:
+        st.subheader("Numéro de téléphone reconnu")
+        st.info(
+            "Format apparent reconnu localement. Aucun propriétaire ou "
+            "compte associé n'est recherché."
+        )
+    st.stop()
+
+username, canonical = normalize_instagram(parsed_query.text)
 
 # Conserve uniquement des résultats publics de présence en mémoire de session.
 now = time.monotonic()
@@ -213,7 +243,7 @@ for item in results:
 st.markdown("#### Explorer les résultats publics indexés")
 st.caption("Ces liens ouvrent des recherches exactes dans des moteurs externes. "
            "Les résultats ne sont pas récupérés ni interprétés automatiquement.")
-engines = search_links(username)
+engines = public_search_links(parsed_query)
 cols = st.columns(3)
 for col, (engine, url) in zip(cols, engines.items()):
     with col:
