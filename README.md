@@ -1,118 +1,70 @@
 # Finestalk
 
-**Finestalk** est une application Streamlit de **conservation, organisation et vérification de preuves de cyberharcèlement**. Elle permet de documenter des faits avec des messages exacts, des captures, des dates, des URLs et des annotations, puis d'exporter un dossier autonome.
+Une interface Streamlit minimale pour consulter les **informations explicitement affichées par un profil public Instagram** à partir d'un pseudonyme.
 
-L'application ne cherche pas à désanonymiser des personnes et ne propose **ni liste de suspects ni probabilités d'identification**. Le nom affiché par un compte est traité comme une déclaration non vérifiée. Le score sur 100 indique uniquement la **complétude documentaire** du dossier, et non la fiabilité d'une identité, la gravité ou une culpabilité.
+**Application :** https://finestalk.streamlit.app/  
+**Branche de déploiement :** `main`  
+**Point d'entrée :** `app.py`
 
-## Étape 1 — Fiche de profil Instagram
+## Interface actuelle
 
-L'écran **Inspection Instagram** constitue un journal chronologique d'informations **explicitement affichées** sur un profil : pseudonyme, URL canonique, nom affiché, date de consultation et captures fournies par l'utilisateur. Chaque observation crée une pièce associée au dossier, conservée avec son empreinte SHA-256 et son journal d'audit. L'historique permet de repérer les changements de nom affiché au fil des observations. Les captures peuvent figurer dans le ZIP/PDF du dossier.
+L'application présente une seule barre de recherche après déverrouillage par mot de passe.
 
-Ce module fonctionne **sans connexion Instagram, sans scrapping ni requête automatique vers le compte** : il prend les observations et pièces apportées par l'utilisateur. Il ne calcule aucune identité supposée, ne recoupe pas les pseudonymes avec des personnes et ne recherche pas de coordonnées privées. Le nom affiché par un profil ne permet pas à lui seul de connaître l'identité civile du titulaire.
+- Saisir `@pseudo`, `pseudo` ou l'adresse HTTPS de son profil Instagram.
+- Appuyer sur **Entrée** pour demander la prévisualisation.
+- Voir le pseudonyme, le lien canonique, la date de consultation, le nom **tel qu'affiché** et la description publique **si Instagram les fournit réellement**.
+- Ouvrir le compte directement sur Instagram.
 
-Pour utiliser cette étape : créez un dossier, ouvrez **Inspection Instagram**, saisissez le pseudonyme ou l'URL du profil, indiquez le nom *exactement tel qu'affiché* s'il existe, puis joignez une capture non retouchée. Les différentes versions sont conservées dans l'historique.
+Aucun dossier, formulaire de collecte, tableau de bord ou menu de gestion n'apparaît dans l'interface. Les anciens modules restent dans le dépôt pour permettre des évolutions ultérieures, sans être importés ni exécutés au démarrage.
 
-## Fonctionnalités
+## Ce qui est techniquement possible
 
-- Tableau de bord des faits, des profils observés et de la complétude.
-- Gestion de plusieurs dossiers et statuts de suivi.
-- Enregistrement de pseudonymes, URLs et noms publics tels qu'affichés, sans corrélation automatique entre plateformes.
-- Archivage de messages et de fichiers (images, documents, vidéos, archives) sans modification du contenu original.
-- Analyse lexicale explicable de quelques catégories : insultes, menaces explicites, intimidation, chantage, divulgation annoncée. Le résultat exige une relecture humaine.
-- Chronologie filtrable, annotations ajoutées sans écraser l'original, journal des opérations.
-- Import contrôlé de fichiers CSV UTF-8, 500 lignes maximum par import.
-- Calcul d'empreintes SHA-256, contrôle d'intégrité et journal d'audit chaîné.
-- Exports PDF, JSON et ZIP incluant les pièces et un manifeste SHA-256.
+Le code effectue **au maximum une requête HTTPS vers une URL Instagram construite à partir du pseudonyme** :
 
-## Installation locale (Windows PowerShell)
+- Aucun identifiant Instagram n'est demandé.
+- Aucune redirection n'est suivie.
+- Aucune URL libre transmise par l'utilisateur n'est interrogée.
+- Le téléchargement de HTML est plafonné à 512 Kio, avec délais réseau.
+- Aucun mécanisme de contournement des protections, recherche en masse ou collecte de données privées n'est prévu.
+- Les données publiques ne sont pas inscrites dans la base de données.
+- Une consultation identique peut être réutilisée durant deux minutes dans la même session pour éviter des requêtes répétées.
 
-Nécessite Python 3.11 ou supérieur.
+La disponibilité des métadonnées dépend de ce qu'Instagram renvoie publiquement à l'instant de la recherche. Si la plateforme affiche une page de connexion, une restriction ou un document générique, Finestalk indique la limite **sans inventer de résultat**.
+
+Le nom affiché sur un compte peut être une marque, un alias, un nom choisi, une usurpation ou une donnée trompeuse. **Il ne constitue pas une identification civile.** L'application ne désanonymise pas les titulaires, ne recoupe pas des pseudos sur plusieurs plateformes, ne cherche pas d'adresse ni de téléphone personnel et n'attribue pas de probabilité nominative.
+
+## Installation locale
+
+Python 3.11 ou supérieur :
 
 ```powershell
 git clone https://github.com/QuentinLamboley/finestalk.git
 cd finestalk
 py -3 -m venv .venv
 .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-pip install -r requirements.txt
-$env:FINESTALK_ACCESS_PASSWORD = "remplacez-par-une-phrase-secrete-longue-et-unique"
+python -m pip install -r requirements.txt
+$env:FINESTALK_ACCESS_PASSWORD = "une-longue-phrase-secrete-unique"
 streamlit run app.py
 ```
 
-En local, ouvrez l'URL donnée par Streamlit. Ne rendez pas une instance sans authentification individuelle et isolation des dossiers accessible à plusieurs utilisateurs.
+Le mot de passe ne doit pas être placé dans le code. Pour Streamlit Community Cloud, configurer `FINESTALK_ACCESS_PASSWORD` dans **Settings → Secrets** (format TOML), et s'assurer que l'application pointe vers le dépôt `QuentinLamboley/finestalk`, branche `main`, fichier `app.py`.
 
-### Installation Linux/macOS
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-export FINESTALK_ACCESS_PASSWORD='remplacez-par-une-phrase-secrete-longue-et-unique'
-streamlit run app.py
-```
-
-### Configuration
-
-| Variable | Valeur | Description |
-|---|---|---|
-| `FINESTALK_ACCESS_PASSWORD` | Obligatoire | Mot de passe d'accès à l'instance ; peut aussi être placé dans les secrets Streamlit |
-| `FINESTALK_DATA_DIR` | `.finestalk_data` | Dossier local contenant la base SQLite et les pièces |
-
-Le mot de passe n'est pas un chiffrement des fichiers. Protégez le disque par le chiffrement de votre système et faites des sauvegardes chiffrées. Le répertoire de preuves est ignoré par Git.
-
-**Déploiement :** l'architecture est **mono-espace privé**, pas multiutilisateur. Ne publiez pas cette instance sur Streamlit Community Cloud ou un domaine public en pensant que le mot de passe partagé fournit une séparation entre usagers. Pour un service public, prévoir avant déploiement une authentification individuelle, une isolation des données par utilisateur, un stockage durable chiffré, une politique de rétention et une revue de sécurité. Sur un hébergement éphémère, les dossiers peuvent disparaître au redémarrage.
-
-
-### Streamlit Community Cloud
-
-Le dépôt peut être relié à [https://finestalk.streamlit.app/](https://finestalk.streamlit.app/) via le tableau de bord Streamlit. Le fichier de démarrage est `app.py` sur la branche `main`. Les changements poussés sur cette branche sont normalement pris en compte par Community Cloud lorsque l'application pointe vers ce dépôt.
-
-**Configurez le mot de passe directement dans Settings → Secrets** de l'application hébergée, et non dans GitHub. Format TOML :
-
-```toml
-FINESTALK_ACCESS_PASSWORD = "remplacez-par-un-secret-unique-et-robuste"
-```
-
-Le code lit déjà cette valeur via `st.secrets` ou `os.environ`. Ne publiez pas la valeur dans le dépôt, les logs ou des captures. Le fichier `.streamlit/secrets.toml` est exclu de Git. Un mot de passe partagé ne garantit pas la séparation des usagers.
-
-**ATTENTION :** sur Community Cloud, les fichiers locaux sont potentiellement éphémères. La base SQLite et les captures ne constituent pas une sauvegarde durable. Exportez régulièrement vos dossiers et utilisez un stockage pérenne chiffré avant tout service réel. L'application n'est pas conçue pour des dossiers de plusieurs victimes sur une même instance.
-
-### Instantanés de profil
-
-L'écran **Inspection Instagram** conserve les seules caractéristiques déclarées par le compte et relevées par l'utilisateur : nom affiché, biographie, catégorie, visibilité, type de compte, badge, lien HTTPS déclaré, accessibilité de la messagerie et compteurs publiquement visibles. Les observations ont leur date, leur provenance et leurs captures. La chronologie signale des changements **entre observations d'un même compte** ; elle n'affirme ni identité civile, ni lien entre plusieurs personnes ou plateformes.
-
-Le module n'accède pas à Instagram automatiquement. Il ne récolte pas d'adresses personnelles, de numéros de téléphone, d'e-mails privés ni d'informations de localisation. Un lien externe déclaré par le compte est conservé mais n'est pas exploré.
-
-## Format d'import CSV
-
-La colonne `texte` est obligatoire. Autres colonnes possibles : `date`, `source`, `auteur`, `url`, `contexte`, `pseudo`. Le pseudo n'est associé à un profil que s'il figure déjà exactement dans le dossier.
-
-```csv
-texte,date,source,auteur,url,contexte,pseudo
-"Message exact à conserver",2026-10-31T20:15:00+01:00,Instagram - message privé,compte_exemple,https://www.instagram.com/,Message reçu,compte_exemple
-```
-
-Les dates importées sont conservées telles quelles ; contrôlez les fuseaux horaires avant d'importer. Les importations ne sont pas réversibles dans l'interface pour préserver la traçabilité.
-
-## Intégrité et limites
-
-Les pièces sont copiées dans un répertoire local avec un nom technique distinct, et leur empreinte SHA-256 est enregistrée. Le vérificateur recalcule ces empreintes. Un journal SQL chaîné enregistre les actions ; une personne ayant le contrôle complet du stockage pourrait néanmoins réécrire la base et la chaîne. Sauvegardez régulièrement le ZIP et son manifeste auprès d'un tiers de confiance si une traçabilité forte est requise.
-
-Une empreinte de fichier **ne démontre pas qu'une capture était authentique avant son import**. Il est recommandé de conserver aussi les fichiers et les messages à leur source, les dates et les URLs. Ne recadrez pas les captures originales ; ajoutez des annotations séparées.
-
-Les règles lexicales sont volontairement simples et transparentes. Elles ne reconnaissent ni toutes les insultes, ni le contexte, ni les images, ni les messages codés. Elles peuvent produire des faux positifs. Aucun score juridique, psychologique ou d'identité n'est généré.
+L'authentification actuelle utilise un secret commun : elle convient à un prototype privé, **pas** à un service multiutilisateur. Pour un service public, prévoir une authentification individuelle et des contrôles d'accès plus solides.
 
 ## Tests
 
 ```bash
 python -m pip install pytest
 python -m pytest -q
+python -m compileall -q app.py instagram_lookup.py profile_review.py
 ```
 
-## En cas de harcèlement
+Les tests de consultation utilisent un transport simulé : ils valident le code sans lancer de requêtes vers Instagram. Ils ne garantissent pas que la plateforme autorisera la lecture réelle de ses pages.
 
-Conserver les messages et les captures, signaler les faits à la plateforme et, selon la situation, déposer plainte contre X. En France : **3018** pour le cyberharcèlement ; **17/112** en cas de danger immédiat.
+## Évolutivité
+
+`instagram_lookup.py` contient la logique de consultation ; `app.py` ne contient que la présentation et la protection par mot de passe. Les composants précédemment développés (`finestalk_core.py`, `profile_review.py`, `account_characteristics*.py`) sont conservés mais masqués pour les versions ultérieures.
 
 ## Licence
 
-CC0 1.0 (voir `LICENSE`).
+CC0 1.0, voir `LICENSE`.
