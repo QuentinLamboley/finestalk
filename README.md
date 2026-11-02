@@ -22,7 +22,7 @@ Aucun dossier, formulaire de collecte, tableau de bord ou menu de gestion n'appa
 Le code effectue **au maximum une requête HTTPS vers une URL Instagram construite à partir du pseudonyme** :
 
 - Aucun identifiant Instagram n'est demandé.
-- Aucune redirection n'est suivie.
+- Les redirections HTTPS vers **le même profil** sur un hôte Instagram autorisé sont suivies (trois maximum) ; toute destination différente est refusée. Si Instagram redirige vers une connexion, la consultation s'arrête et l'application l'explique.
 - Aucune URL libre transmise par l'utilisateur n'est interrogée.
 - Le téléchargement de HTML est plafonné à 512 Kio, avec délais réseau.
 - Aucun mécanisme de contournement des protections, recherche en masse ou collecte de données privées n'est prévu.
