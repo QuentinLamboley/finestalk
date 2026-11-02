@@ -7,7 +7,7 @@ import time
 
 import streamlit as st
 
-from instagram_lookup import lookup_public_profile
+from public_presence import check_public_presence, search_links
 from profile_review import normalize_instagram
 
 
@@ -105,8 +105,8 @@ def hero() -> None:
       <div class="ft-kicker">Analyse de profils publics</div>
       <div class="ft-name">Finestalk</div>
       <div class="ft-sub">
-        Un pseudonyme Instagram. Une lecture claire des informations
-        publiquement affichées par le compte.
+        Un pseudonyme. Des présences publiques vérifiées sur plusieurs
+        plateformes, avec des liens vers leurs sources.
       </div>
     </div>
     """, unsafe_allow_html=True)
@@ -138,8 +138,8 @@ query = st.text_input(
 )
 st.markdown("""
 <div class="ft-caption">
-Appuyez sur Entrée pour lancer la consultation publique.
-Les résultats dépendent de l’accès autorisé par Instagram.
+Appuyez sur Entrée pour vérifier la présence publique de ce pseudonyme.
+Un pseudo identique ne signifie pas une même personne.
 </div>
 """, unsafe_allow_html=True)
 
@@ -152,57 +152,78 @@ except ValueError as error:
     st.error(str(error))
     st.stop()
 
-# Limite les requêtes involontaires aux reruns Streamlit.
+# Conserve uniquement des résultats publics de présence en mémoire de session.
 now = time.monotonic()
-cached = st.session_state.get("_profile_result")
-cached_at = st.session_state.get("_profile_result_at", 0)
-if (cached is not None and cached.username.casefold() == username.casefold()
-        and now - cached_at < (120 if cached.status in ("metadonnees_publiques", "metadonnees_partielles") else 10)
-        and st.session_state.get("_lookup_version") == 2):
-    result = cached
+cached = st.session_state.get("_presence_report")
+cached_at = st.session_state.get("_presence_at", 0.0)
+if cached is not None and st.session_state.get("_presence_handle") == username.casefold() and now - cached_at < 180:
+    results = cached
 else:
-    with st.spinner("Consultation du profil public…"):
-        result = lookup_public_profile(username)
-    st.session_state["_profile_result"] = result
-    st.session_state["_profile_result_at"] = now
-    st.session_state["_lookup_version"] = 2
+    with st.spinner("Vérification de la présence publique sur cinq plateformes…"):
+        results = check_public_presence(username)
+    st.session_state["_presence_handle"] = username.casefold()
+    st.session_state["_presence_report"] = results
+    st.session_state["_presence_at"] = now
+
+present = [r for r in results if r.state == "found"]
+missing = [r for r in results if r.state == "absent"]
+unknown = [r for r in results if r.state in ("unknown", "unsupported")]
 
 st.divider()
-with st.container(border=True):
-    st.markdown('<div class="ft-source">Profil Instagram consulté</div>', unsafe_allow_html=True)
-    st.subheader("@" + result.username)
-    st.caption("Consulté le " + result.checked_at.replace("T", " ") + " UTC")
+st.markdown('<div class="ft-source">Recherche de présence publique</div>', unsafe_allow_html=True)
+st.subheader("@" + username)
+st.caption("Plateformes vérifiées via leurs interfaces publiques · "
+           "Aucune recherche de données personnelles")
 
-    if result.status == "metadonnees_publiques":
-        st.success("Métadonnées publiques disponibles")
-    elif result.status == "metadonnees_partielles":
-        st.info("Quelques métadonnées publiques disponibles")
-    else:
-        st.warning(result.message)
+a, b, c = st.columns(3)
+a.metric("Comptes trouvés", len(present))
+b.metric("Sans fiche publique", len(missing))
+c.metric("Non vérifiables", len(unknown))
 
-    if result.display_name:
-        st.markdown("**Nom affiché sur le profil**")
-        st.write(result.display_name)
-        st.caption("Nom déclaré par le compte ; il ne prouve pas l'identité civile de son titulaire.")
+if present:
+    st.success(str(len(present)) + " compte(s) avec ce pseudonyme exact confirmé(s) par une API publique.")
+else:
+    st.info("Aucune présence n'a été confirmée par les interfaces interrogées. "
+            "Cela ne signifie pas que ce pseudonyme n'est utilisé nulle part.")
 
-    if result.public_description:
-        st.markdown("**Description publique de la page**")
-        st.write(result.public_description)
-        st.caption("Texte fourni par les métadonnées Instagram, pas nécessairement une biographie.")
+for item in results:
+    with st.container(border=True):
+        left, right = st.columns([3, 1])
+        with left:
+            st.markdown("**" + item.platform + "**")
+            if item.state == "found":
+                st.caption("● Pseudonyme exact retrouvé · Compte public")
+            elif item.state == "absent":
+                st.caption("○ Aucune fiche publique trouvée")
+            elif item.state == "unsupported":
+                st.caption("— Format du pseudo non compatible")
+            else:
+                st.caption("◌ Vérification indisponible")
+            st.write(item.description)
+        with right:
+            if item.state == "found":
+                st.link_button("Voir le compte", item.profile_url, use_container_width=True)
+            elif item.profile_url and item.state != "unsupported":
+                st.link_button("Vérifier", item.profile_url, use_container_width=True)
+        with st.expander("Source de la vérification"):
+            st.code(item.source_url or "Aucune requête possible", language=None)
+            st.caption("Réponse HTTP : " + str(item.http_status or "non disponible"))
+            st.caption("Consultation : " + item.checked_at)
 
-    if result.page_title and result.status in ("metadonnees_publiques", "metadonnees_partielles"):
-        with st.expander("Titre public de la page"):
-            st.text(result.page_title)
+st.markdown("#### Explorer les résultats publics indexés")
+st.caption("Ces liens ouvrent des recherches exactes dans des moteurs externes. "
+           "Les résultats ne sont pas récupérés ni interprétés automatiquement.")
+engines = search_links(username)
+cols = st.columns(3)
+for col, (engine, url) in zip(cols, engines.items()):
+    with col:
+        st.link_button(engine, url, use_container_width=True)
 
-    if result.status not in ("metadonnees_publiques", "metadonnees_partielles"):
-        st.caption("Instagram peut exiger une connexion ou limiter l'accès automatisé. "
-                   "L'absence de résultat ne permet pas de conclure que le compte n'existe pas.")
-
-    st.link_button("Voir le profil sur Instagram", canonical, use_container_width=True)
-
+st.link_button("Ouvrir le profil Instagram", canonical, use_container_width=True)
 st.markdown("""
 <div class="ft-caption">
-Finestalk n'attribue pas une identité réelle à un pseudonyme.
-Aucun rapprochement nominatif, historique ni donnée privée n'est collecté dans cette version.
+La présence du même pseudonyme sur deux plateformes ne prouve pas que
+les comptes sont contrôlés par la même personne. Aucun nom civil,
+coordonnée privée ou score d'identité n'est déduit.
 </div>
 """, unsafe_allow_html=True)

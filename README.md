@@ -1,39 +1,35 @@
 # Finestalk
 
-Une interface Streamlit minimale pour consulter les **informations explicitement affichées par un profil public Instagram** à partir d'un pseudonyme.
+**Finestalk** explore la présence publique d'un **pseudonyme Instagram** sur plusieurs plateformes, en restant une interface Streamlit simple : une seule barre de recherche et une fiche de résultats. Ce n'est pas un outil de désanonymisation de personnes.
 
-**Application :** https://finestalk.streamlit.app/  
-**Branche de déploiement :** `main`  
-**Point d'entrée :** `app.py`
+- Application cible : https://finestalk.streamlit.app/
+- Dépôt : https://github.com/QuentinLamboley/finestalk
+- Branche : `main`
+- Fichier d'entrée : `app.py`
 
-## Interface actuelle
+## Comment fonctionne une recherche ?
 
-L'application présente une seule barre de recherche après déverrouillage par mot de passe.
+Tapez un pseudonyme, par exemple `@octocat`, puis validez. L'application vérifie en parallèle, au plus trois requêtes à la fois, la présence **exacte du même pseudonyme** dans les interfaces publiques de :
 
-- Saisir `@pseudo`, `pseudo` ou l'adresse HTTPS de son profil Instagram.
-- Appuyer sur **Entrée** pour demander la prévisualisation.
-- Voir le pseudonyme, le lien canonique, la date de consultation, le nom **tel qu'affiché** et la description publique **si Instagram les fournit réellement**.
-- Ouvrir le compte directement sur Instagram.
+1. **GitHub** — `GET /users/{username}`
+2. **GitLab** — `GET /api/v4/users?username=...`
+3. **DEV Community** — `GET /api/users/by_username?url=...`
+4. **Chess.com** — `GET /pub/player/{username}`
+5. **Hacker News** — `GET /v0/user/{id}.json`
 
-Aucun dossier, formulaire de collecte, tableau de bord ou menu de gestion n'apparaît dans l'interface. Les anciens modules restent dans le dépôt pour permettre des évolutions ultérieures, sans être importés ni exécutés au démarrage.
+Elle distingue explicitement :
 
-## Ce qui est techniquement possible
+- **Compte public trouvé** : une API a retourné une fiche portant ce pseudonyme exact.
+- **Aucune fiche publique trouvée** : l'API a retourné un résultat vide ou un code 404. Cela n'établit pas que le pseudo est disponible.
+- **Vérification indisponible** : réseau, limitation, authentification, réponse inattendue ou format de pseudo incompatible. Aucun résultat absent/positif n'est déduit dans ce cas.
 
-Le code effectue **au maximum une requête HTTPS vers une URL Instagram construite à partir du pseudonyme** :
+Une recherche exacte peut aussi être ouverte manuellement sur Google, Bing et DuckDuckGo. **Finestalk ne collecte pas les résultats de ces moteurs.**
 
-- Aucun identifiant Instagram n'est demandé.
-- Les redirections HTTPS vers **le même profil** sur un hôte Instagram autorisé sont suivies (trois maximum) ; toute destination différente est refusée. Si Instagram redirige vers une connexion, la consultation s'arrête et l'application l'explique.
-- Aucune URL libre transmise par l'utilisateur n'est interrogée.
-- Le téléchargement de HTML est plafonné à 512 Kio, avec délais réseau.
-- Aucun mécanisme de contournement des protections, recherche en masse ou collecte de données privées n'est prévu.
-- Les données publiques ne sont pas inscrites dans la base de données.
-- Une consultation identique peut être réutilisée durant deux minutes dans la même session pour éviter des requêtes répétées.
+**Important :** deux comptes portant le même pseudonyme peuvent appartenir à deux personnes différentes. Une correspondance de nom d'utilisateur est une observation sur des comptes, pas une preuve d'identité. Aucun nom civil, contact privé, adresse, localisation ou pourcentage de probabilité d'identité n'est récupéré ni inféré.
 
-La disponibilité des métadonnées dépend de ce qu'Instagram renvoie publiquement à l'instant de la recherche. Si la plateforme affiche une page de connexion, une restriction ou un document générique, Finestalk indique la limite **sans inventer de résultat**.
+Le module Instagram initial reste dans le dépôt mais n'est plus interrogé par l'interface : l'hébergement Streamlit recevait des redirections de connexion plutôt que les métadonnées du profil.
 
-Le nom affiché sur un compte peut être une marque, un alias, un nom choisi, une usurpation ou une donnée trompeuse. **Il ne constitue pas une identification civile.** L'application ne désanonymise pas les titulaires, ne recoupe pas des pseudos sur plusieurs plateformes, ne cherche pas d'adresse ni de téléphone personnel et n'attribue pas de probabilité nominative.
-
-## Installation locale
+## Installation
 
 Python 3.11 ou supérieur :
 
@@ -47,24 +43,29 @@ $env:FINESTALK_ACCESS_PASSWORD = "une-longue-phrase-secrete-unique"
 streamlit run app.py
 ```
 
-Le mot de passe ne doit pas être placé dans le code. Pour Streamlit Community Cloud, configurer `FINESTALK_ACCESS_PASSWORD` dans **Settings → Secrets** (format TOML), et s'assurer que l'application pointe vers le dépôt `QuentinLamboley/finestalk`, branche `main`, fichier `app.py`.
+Sur Streamlit Community Cloud, configurez `FINESTALK_ACCESS_PASSWORD` dans les secrets privés de l'application (Settings → Secrets). **Ne l'inscrivez pas dans GitHub.** Le code lit ce secret, sans changer le design de la page de connexion.
 
-L'authentification actuelle utilise un secret commun : elle convient à un prototype privé, **pas** à un service multiutilisateur. Pour un service public, prévoir une authentification individuelle et des contrôles d'accès plus solides.
+## Limites et sécurités
 
-## Tests
+- Les seules destinations contactées sont cinq **API publiques prédéfinies**, construites à partir d'un pseudonyme validé. Pas d'URL arbitraire, de connexion aux comptes, d'exploration en profondeur, ni de contournement de restriction.
+- Une requête par plateforme, redirections HTTP désactivées, connexion limitée à 3,5 s, lecture à 7 s, corps JSON plafonné à 160 Ko.
+- Au maximum trois consultations simultanées. Une recherche déjà effectuée est gardée pendant trois minutes dans la session Streamlit (pas de base de données de recherche ni de fichier exporté).
+- Aucun nom, biographie, coordonnées ni données de profils tiers ne sont récupérés dans les réponses JSON : seuls le statut de présence du pseudonyme et les liens officiels vers les pages sont affichés.
+- L'accès distant aux API peut être limité depuis certains hébergeurs. Le panneau de résultats indique alors **Indisponible**, sans inventer d'identité ni déclarer le profil absent.
+
+Les anciens modules de gestion de dossiers restent dans le code pour une étape ultérieure, sans être chargés par `app.py`. L'instance Streamlit actuelle utilise un secret partagé et **n'est pas destinée à accueillir plusieurs utilisateurs indépendants**.
+
+## Vérifications
 
 ```bash
-python -m pip install pytest
+python -m pip install -r requirements.txt pytest
 python -m pytest -q
-python -m compileall -q app.py instagram_lookup.py profile_review.py
+python -m compileall -q app.py public_presence.py
+python scripts/smoke_public_presence.py
 ```
 
-Les tests de consultation utilisent un transport simulé : ils valident le code sans lancer de requêtes vers Instagram. Ils ne garantissent pas que la plateforme autorisera la lecture réelle de ses pages.
-
-## Évolutivité
-
-`instagram_lookup.py` contient la logique de consultation ; `app.py` ne contient que la présentation et la protection par mot de passe. Les composants précédemment développés (`finestalk_core.py`, `profile_review.py`, `account_characteristics*.py`) sont conservés mais masqués pour les versions ultérieures.
+Les tests automatisés hors réseau couvrent les réponses confirmées, absentes, invalides, bloquées, les formats propres aux plateformes et les échecs de connexion. Le script de vérification réseau tente deux comptes publics connus, imprime les statuts réellement obtenus et échoue si aucune réponse positive n'est reçue. Ce contrôle est **non bloquant** en CI afin qu'une panne ou une limitation d'une API externe n'empêche pas la livraison d'un correctif testé localement.
 
 ## Licence
 
-CC0 1.0, voir `LICENSE`.
+CC0 1.0. Voir `LICENSE`.
